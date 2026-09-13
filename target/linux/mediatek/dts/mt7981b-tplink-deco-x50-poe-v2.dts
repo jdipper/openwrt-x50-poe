@@ -172,6 +172,7 @@
 			factory: partition@5700000 {
 				label = "factory";
 				reg = <0x5700000 0x100000>;
+				read-only;
 			};
 
 			partition@5800000 {
@@ -182,7 +183,7 @@
 
 			partition@6100000 {
 				label = "runtime_data";
-				reg = <0x6100000 0x1f00000>;
+				reg = <0x6100000 0x1100000>;
 				read-only;
 			};
 		};
