@@ -3101,7 +3101,9 @@ define Device/tplink_deco-x50-poe-v2
   SUBPAGESIZE := 2048
   IMAGE_SIZE := 42496k
   KERNEL_IN_UBI := 1
-  IMAGES := sysupgrade.bin factory.bin
+  # A factory UBI image would omit the vendor's second-stage uboot volume.
+  # Do not emit a factory image until its boot chain is validated.
+  IMAGES := sysupgrade.bin
   KERNEL_INITRAMFS_SUFFIX := -recovery.itb
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_DTS_LOADADDR := 0x43f00000
@@ -3111,14 +3113,6 @@ define Device/tplink_deco-x50-poe-v2
   KERNEL_INITRAMFS := kernel-bin | lzma | \
 	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-  IMAGE/factory.bin := append-ubi | tplink-image-2022
-  TPLINK_CLOUD := 1
-  TPLINK_SUPPORT_STRING := SupportList:\r\n\
-	{product_name:X50-POE,product_ver:2.0.0,special_id:45550000}\r\n\
-	{product_name:X50-POE,product_ver:2.0.0,special_id:55530000}\r\n\
-	{product_name:X50-POE,product_ver:2.0.0,special_id:43410000}\r\n\
-	{product_name:HB6300-POE,product_ver:2.0.0,special_id:55530000}\r\n
-  TPLINK_SOFT_VERSION := soft_ver:2.0.0 Build 20250101 Rel. 00001
 endef
 TARGET_DEVICES += tplink_deco-x50-poe-v2
 
