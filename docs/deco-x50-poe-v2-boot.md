@@ -112,7 +112,10 @@ testing gives an answer, don't leave as permanent without reconsidering:**
 - Withholding `factory.bin` (`2bc09aa`). Correct while the boot chain is
   unverified. Once a working install path is confirmed (e.g. a rebuilt
   factory image that actually contains a valid `uboot` volume), this should
-  be revisited, not left disabled indefinitely by default.
+  be revisited, not left disabled indefinitely by default. See the
+  `tplink_deco-x50-poe-v2-uboot-test` device profile below, which is exactly
+  that rebuilt image, offered as a separate opt-in profile rather than
+  folded into `factory.bin` — it has not been confirmed to work.
 - The upgrade guard's blanket refusal to act on an unattached/misconfigured
   slot. Right call while unverified; may need a documented override or a
   clearer failure message once real failure modes are understood on
@@ -124,6 +127,39 @@ testing gives an answer, don't leave as permanent without reconsidering:**
 - The `ubi_factory_data` volume name (see above).
 - Any first-boot install path actually completing on real hardware. No
   image built from this branch has been confirmed to boot.
+
+## Experimental uboot-volume test image (Option A from issue 3)
+
+`Device/tplink_deco-x50-poe-v2-uboot-test` in `filogic.mk` builds
+`factory-experimental.bin`: the same image as the withheld `factory.bin`,
+plus a `uboot` UBI volume at volume ID 0 (ahead of `kernel`=1, `rootfs`=2),
+populated from `second-uboot.bin` in the v2 GPL release — matching the
+stock volume-ID layout from issue 1's evidence table exactly.
+
+This is a deliberately separate device profile, not a change to
+`Device/tplink_deco-x50-poe-v2`. Building or selecting the normal device is
+unaffected by any of this.
+
+New package: `package/firmware/tplink-deco-x50-poe-v2-uboot` downloads the
+GPL release and extracts `uboot/second-uboot.bin` into
+`STAGING_DIR_IMAGE`. See its `Package/.../description` for the one thing
+this does **not** resolve: `second-uboot.bin` is U-Boot 2022.04-rc1
+(January 2023); the actual primary bootloader on retail v2 units is
+2022.07-rc3 (August 2023). Nothing here confirms those are compatible —
+this only tests the "restoring the missing volume is sufficient" half of
+the hypothesis.
+
+Safety property, not a guarantee of success: this only ever writes inside
+the `ubi0` UBI container. It never touches `bl2` (the primary bootloader)
+or `ubi1` (the other slot). If the primary bootloader still can't boot from
+`ubi0` after this, the fallback path already implicated in issue 1 should
+still return the device to stock — same symptom as already reported, not a
+new failure mode. This has not been verified on hardware and should not be
+treated as confirmed until it has.
+
+Not verified by anything in this repository: this Makefile/device profile
+has not been run through a full OpenWrt build in this environment. Build it
+end-to-end before flashing anything.
 
 ## Evidence needed for the actual boot fix
 
