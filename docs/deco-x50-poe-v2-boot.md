@@ -57,6 +57,74 @@ No environment writes, alternate-slot writes, loader insertion, or load-address
 changes are introduced. The existing 512 MiB RAM declaration remains pending
 verification against the actual revision; an older vendor DTS declares 256 MiB.
 
+## GPL-package verification (2026-09-13)
+
+Downloaded and inspected the v2 GPL release directly (`Deco_X50-POEv2_BASE_AX3000_GPL.tar.gz`,
+same URL as above). It contains the actual production `uboot.bin` /
+`second-uboot.bin` binaries and the product's reference DTS
+(`build/product_configs/x50-poev2_1/mt7981-spim-nand-rfb.dts`), not just the
+OpenWrt-side GPL sources.
+
+Confirmed against the real firmware (no longer just plausible inference):
+
+- RAM is 256 MiB (`reg = <0 0x40000000 0 0x10000000>`), not 512 MiB. Fixed in
+  this branch.
+- The vendor bootloader (`strings uboot.bin`) contains the literal message
+  `volume uboot read error %d` plus the bare volume-name tokens `uboot`,
+  `kernel`, `rootfs`, `rootfs_data`. The "uboot" UBI volume requirement is a
+  fact about the real bootloader, not a conservative guess.
+- The embedded `mtdparts=` kernel cmdline in `uboot.bin` matches this
+  branch's partition table exactly, including `runtime_data` at 17 MiB
+  (`0x01100000`) — the resize in this branch's DTS change is correct as
+  measured against production firmware, not just "the vendor DTS."
+- `second-uboot.bin` (a separate `u-boot legacy uImage`, type `seconduboot`)
+  confirms a distinct second-stage loader binary exists in the real boot
+  chain, consistent with the "vendor's second-stage uboot volume" theory.
+
+Still not resolved by the GPL release:
+
+- The `ubi_factory_data` UBI volume name assumed in `09_mount_cfg_part` for
+  the `factory_data` partition. U-Boot's boot chain never touches
+  `factory_data`, so its binaries have no opinion on this. The release's
+  `openwrt/` and `sdk/mtk798x/openwrt-21.02/` trees are a generic, dated
+  MediaTek reference tree, not this product's actual rootfs/init scripts.
+  This needs either the stock firmware's rootfs or a live device.
+
+## What's permanent vs. what's scaffolding for testing
+
+This branch mixes two different kinds of change. Do not treat them the same
+way when deciding what to keep:
+
+**Confirmed correct — keep regardless of what hardware testing finds:**
+
+- `runtime_data` resized to 17 MiB and marked read-only, and `factory`
+  marked read-only (`17ac90a`) — matches the real `mtdparts=` string exactly.
+- RAM size corrected to 256 MiB (this change) — matches the vendor's own
+  product DTS exactly.
+- The `uboot` UBI-volume requirement in `tplink_deco_x50_poe_v2_check()` —
+  matches a literal error string and volume-name tokens in the real
+  bootloader binary. This is not a conservative guess to relax later; it is
+  how the hardware behaves.
+
+**Testing scaffolding — appropriate for now, but revisit once hardware
+testing gives an answer, don't leave as permanent without reconsidering:**
+
+- Withholding `factory.bin` (`2bc09aa`). Correct while the boot chain is
+  unverified. Once a working install path is confirmed (e.g. a rebuilt
+  factory image that actually contains a valid `uboot` volume), this should
+  be revisited, not left disabled indefinitely by default.
+- The upgrade guard's blanket refusal to act on an unattached/misconfigured
+  slot. Right call while unverified; may need a documented override or a
+  clearer failure message once real failure modes are understood on
+  hardware, per the existing note above about rejecting a "potentially
+  working direct-kernel boot setup."
+
+**Still unverified — blocks calling this device supported:**
+
+- The `ubi_factory_data` volume name (see above).
+- Any first-boot install path actually completing on real hardware. No
+  image built from this branch has been confirmed to boot.
+
 ## Evidence needed for the actual boot fix
 
 1. Record the hardware revision, stock firmware version, complete serial
