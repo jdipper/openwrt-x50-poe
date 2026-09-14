@@ -3101,7 +3101,11 @@ define Device/tplink_deco-x50-poe-v2
   SUBPAGESIZE := 2048
   IMAGE_SIZE := 42496k
   KERNEL_IN_UBI := 1
-  IMAGES := sysupgrade.bin factory.bin
+  # A factory UBI image built the normal way omits the vendor's second-stage
+  # uboot volume. Do not emit a factory image here until that boot chain is
+  # validated; see Device/tplink_deco-x50-poe-v2-uboot-test below for the
+  # experimental image that restores it, and docs/deco-x50-poe-v2-boot.md.
+  IMAGES := sysupgrade.bin
   KERNEL_INITRAMFS_SUFFIX := -recovery.itb
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_DTS_LOADADDR := 0x43f00000
@@ -3111,7 +3115,49 @@ define Device/tplink_deco-x50-poe-v2
   KERNEL_INITRAMFS := kernel-bin | lzma | \
 	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-  IMAGE/factory.bin := append-ubi | tplink-image-2022
+endef
+TARGET_DEVICES += tplink_deco-x50-poe-v2
+
+# EXPERIMENTAL, not a confirmed fix: see docs/deco-x50-poe-v2-boot.md and
+# https://github.com/jdipper/openwrt-x50-poe/issues/3. Separate device
+# profile, kept out of Device/tplink_deco-x50-poe-v2 above, specifically so
+# building or selecting the normal device is never affected by this.
+#
+# Restores a "uboot" UBI volume (vendor's second-stage loader, extracted from
+# the v2 GPL release) at volume ID 0, ahead of kernel/rootfs, matching the
+# stock volume layout reported in issue #1 (uboot=0 static, kernel=1 static,
+# rootfs=2 static). This tests the leading boot-fallback hypothesis; it does
+# not confirm the second-stage binary's version is compatible with the
+# primary bootloader on retail v2 units (see the package description in
+# package/firmware/tplink-deco-x50-poe-v2-uboot for the version mismatch this
+# does not resolve). This never writes to bl2 or to the other UBI slot.
+define Device/tplink_deco-x50-poe-v2-uboot-test
+  DEVICE_VENDOR := TP-Link
+  DEVICE_MODEL := Deco X50-PoE
+  DEVICE_VARIANT := v2 (EXPERIMENTAL uboot-volume test, see issue 3)
+  SUPPORTED_DEVICES += tplink,deco-x50-poe-v2
+  DEVICE_DTS := mt7981b-tplink-deco-x50-poe-v2
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config-X50-POE_2_0_0
+  DEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware \
+	kmod-usb3 kmod-phy-realtek tplink-deco-x50-poe-v2-uboot
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  SUBPAGESIZE := 2048
+  IMAGE_SIZE := 42496k
+  KERNEL_IN_UBI := 1
+  UBINIZE_PARTS := uboot=:$(STAGING_DIR_IMAGE)/mt7981_tplink_deco-x50-poe-v2-second-uboot.bin
+  IMAGES := factory-experimental.bin
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  DEVICE_DTC_FLAGS := --pad 4096
+  DEVICE_DTS_LOADADDR := 0x43f00000
+  KERNEL_LOADADDR := 0x44000000
+  KERNEL := kernel-bin | gzip | \
+	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/factory-experimental.bin := append-ubi | tplink-image-2022
   TPLINK_CLOUD := 1
   TPLINK_SUPPORT_STRING := SupportList:\r\n\
 	{product_name:X50-POE,product_ver:2.0.0,special_id:45550000}\r\n\
@@ -3120,7 +3166,7 @@ define Device/tplink_deco-x50-poe-v2
 	{product_name:HB6300-POE,product_ver:2.0.0,special_id:55530000}\r\n
   TPLINK_SOFT_VERSION := soft_ver:2.0.0 Build 20250101 Rel. 00001
 endef
-TARGET_DEVICES += tplink_deco-x50-poe-v2
+TARGET_DEVICES += tplink_deco-x50-poe-v2-uboot-test
 
 define Device/tplink_eap683-lr
   DEVICE_VENDOR := TP-Link

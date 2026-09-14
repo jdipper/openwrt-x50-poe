@@ -130,6 +130,46 @@ update_oem_ubi_volume() {
 	ubiupdatevol "/dev/$ubidev" -s "$oem_volume_size" "$oem_volume_data"
 }
 
+# Only support volume-preserving upgrades on an already attached slot. The
+# vendor boot chain may require its second-stage loader in the "uboot" volume.
+# Do not let the generic NAND fallback format an unrecognised installation.
+tplink_deco_x50_poe_v2_check() {
+	local file="$1"
+	local board_dir="sysupgrade-tplink_deco-x50-poe-v2"
+	local ubidev member length
+
+	# Require the uncompressed sysupgrade tar emitted by this device profile.
+	# Raw UBI images replace the whole slot, including the vendor loader.
+	[ "$(dd if="$file" bs=1 skip=257 count=5 2>/dev/null)" = "ustar" ] || {
+		echo "Deco X50-PoE v2 requires a sysupgrade tar image."
+		return 1
+	}
+	nand_verify_tar_file "$file" cat || return 1
+	[ "$(tar tf "$file" | grep '^sysupgrade-.*/$')" = "$board_dir/" ] || {
+		echo "Unexpected Deco X50-PoE v2 sysupgrade archive layout."
+		return 1
+	}
+	for member in CONTROL kernel root; do
+		length="$(tar xOf "$file" "$board_dir/$member" 2>/dev/null | wc -c)"
+		[ "$length" -gt 0 ] || {
+			echo "Missing or empty sysupgrade member: $member"
+			return 1
+		}
+	done
+
+	ubidev="$(nand_find_ubi ubi0)"
+	[ -n "$ubidev" ] || {
+		echo "Deco X50-PoE v2: ubi0 is not attached; refusing to initialise the slot."
+		return 1
+	}
+	[ -n "$(nand_find_volume "$ubidev" uboot)" ] || {
+		echo "Deco X50-PoE v2: vendor uboot volume is missing; boot-chain validation is required."
+		return 1
+	}
+
+	return 0
+}
+
 platform_do_upgrade() {
 	local board=$(board_name)
 
@@ -283,6 +323,11 @@ platform_do_upgrade() {
 		nand_do_upgrade "$1"
 		;;
 	tplink,deco-x50-poe-v2)
+		# Repeat after entering ramfs, including when sysupgrade -F was used.
+		tplink_deco_x50_poe_v2_check "$1" || {
+			nand_do_upgrade_failed
+			return 1
+		}
 		CI_UBIPART="ubi0"
 		CI_KERNPART="kernel"
 		CI_ROOTPART="rootfs"
@@ -352,6 +397,10 @@ platform_check_image() {
 	[ "$#" -gt 1 ] && return 1
 
 	case "$board" in
+	tplink,deco-x50-poe-v2)
+		tplink_deco_x50_poe_v2_check "$1"
+		return $?
+		;;
 	abt,asr3000|\
 	acer,predator-w6x-ubootmod|\
 	asus,zenwifi-bt8-ubootmod|\
